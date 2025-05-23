@@ -1,6 +1,9 @@
 package cpu
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type opcode byte
 
@@ -56,7 +59,7 @@ var registerToString = map[register]string{
 	DI:              "di",
 }
 
-var mapModeAndWidthToRegister = map[byte][2]register{
+var mapModeAndWidthToRegister = [...][2]register{
 	0b000: {AL, AX},
 	0b001: {CL, CX},
 	0b010: {DL, DX},
@@ -68,26 +71,61 @@ var mapModeAndWidthToRegister = map[byte][2]register{
 }
 
 type decodeResult struct {
-	op  opcode
-	d   bool
-	w   int
-	mod byte
-	reg byte
-	rm  byte
+	op opcode
+	// "Direction" bit. Equals to 1 when src is specified in REG field (and 0 for dst)
+	d uint8
+	// "Size" bit. 0 — we're working with bytes. 1 — with words.
+	w uint8
+	// "Memory mode" bits. Indicates whether one operand is in memory or both are registers
+	mod uint8
+	// "Register" bits. Used to identify which register to use (usually)
+	reg uint8
+	// "Register/memory" bits. Used to indentify which register to use or used in EAC
+	rm uint8
 }
 
-func decode(stream []byte) decodeResult {
-	var res decodeResult
+func disassemble(stream []byte) (string, error) {
+	if len(stream) < 2 {
+		return "", fmt.Errorf("byte stream should at least have 2 bytes, got — %d", len(stream))
+	}
 
+	var out strings.Builder
+	out.WriteString("bits 16\n")
+
+	for ip := 0; ip < len(stream); {
+		res := decode(stream[ip:])
+		ip += 2
+
+		switch res.mod {
+		case 0b11:
+			operand1 := mapModeAndWidthToRegister[res.reg][res.w]
+			operand2 := mapModeAndWidthToRegister[res.rm][res.w]
+
+			opStr := opcodeToString[res.op]
+			dstStr := registerToString[operand2]
+			srcStr := registerToString[operand1]
+
+			fmt.Fprintf(&out, "\n%s %s, %s", opStr, dstStr, srcStr)
+		default:
+			return "", fmt.Errorf("unsupported MOD value: %b", res.mod)
+		}
+	}
+
+	return out.String(), nil
+}
+
+func decode(stream []byte) (res decodeResult) {
+	// NOTE: An instruction could from 1 to 6 byte in length
 	b1 := stream[0]
-	b2 := stream[1]
 
 	switch {
 	case b1>>2 == 0b100010:
+		b2 := stream[1]
+
 		// b1
 		res.op = MOV
-		res.d = b1>>1&0x1 == 1
-		res.w = int(b1 & 0x1)
+		res.d = b1 >> 1 & 0x1
+		res.w = b1 & 0x1
 
 		// b2
 		res.mod = b2 >> 6
@@ -98,26 +136,4 @@ func decode(stream []byte) decodeResult {
 	}
 
 	return res
-}
-
-func disassemble(stream []byte) (string, error) {
-	if len(stream) < 2 {
-		return "", fmt.Errorf("byte stream should at least have 2 bytes, got — %d", len(stream))
-	}
-
-	res := decode(stream)
-
-	switch res.mod {
-	case 0b11:
-		operand1 := mapModeAndWidthToRegister[res.reg][res.w]
-		operand2 := mapModeAndWidthToRegister[res.rm][res.w]
-
-		opStr := opcodeToString[res.op]
-		dstStr := registerToString[operand2]
-		srcStr := registerToString[operand1]
-
-		return fmt.Sprintf("bits 16\n\n%s %s, %s", opStr, dstStr, srcStr), nil
-	default:
-		return "", fmt.Errorf("unsupported MOD value: %b", res.mod)
-	}
 }

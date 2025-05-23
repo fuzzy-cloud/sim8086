@@ -9,28 +9,37 @@ import (
 )
 
 func TestDecode(t *testing.T) {
-	stream, err := os.ReadFile("listings/0037_single_register_mov")
-	require.NoError(t, err)
+	filenames := []string{
+		"0037_single_register_mov",
+		"0038_many_register_mov",
+	}
 
-	asmFile, err := os.ReadFile("listings/0037_single_register_mov.asm")
-	require.NoError(t, err)
+	for _, name := range filenames {
+		t.Run(name, func(t *testing.T) {
+			stream, err := os.ReadFile("listings/" + name)
+			require.NoError(t, err)
 
-	insideComment := false
-	want := strings.TrimLeftFunc(string(asmFile), func(r rune) bool {
-		if r == ';' {
-			insideComment = true
-		}
-		if r == '\n' {
-			insideComment = false
-			return true
-		}
-		return insideComment
-	})
-	want = strings.TrimSpace(want)
+			asmFile, err := os.ReadFile("listings/" + name + ".asm")
+			require.NoError(t, err)
 
-	t.Logf("\n%b\n", stream)
+			insideComment := false
+			want := strings.TrimLeftFunc(string(asmFile), func(r rune) bool {
+				if r == ';' {
+					insideComment = true
+				}
+				if r == '\n' {
+					insideComment = false
+					return true
+				}
+				return insideComment
+			})
+			want = strings.TrimSpace(want)
 
-	got, err := disassemble(stream)
-	require.NoError(t, err)
-	require.Equal(t, want, got)
+			t.Logf("\n%b\n", stream)
+
+			got, err := disassemble(stream)
+			require.NoError(t, err)
+			require.Equal(t, want, got)
+		})
+	}
 }
