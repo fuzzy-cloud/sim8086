@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -12,6 +13,7 @@ func TestDecode(t *testing.T) {
 	filenames := []string{
 		"0037_single_register_mov",
 		"0038_many_register_mov",
+		"0039_more_movs",
 	}
 
 	for _, name := range filenames {
@@ -22,24 +24,30 @@ func TestDecode(t *testing.T) {
 			asmFile, err := os.ReadFile("listings/" + name + ".asm")
 			require.NoError(t, err)
 
-			insideComment := false
-			want := strings.TrimLeftFunc(string(asmFile), func(r rune) bool {
-				if r == ';' {
-					insideComment = true
+			filtered := make([]string, 0, 10)
+			shouldAddNewLine := false
+			for l := range strings.Lines(string(asmFile)) {
+				if l[0] == ';' {
+					continue
 				}
-				if r == '\n' {
-					insideComment = false
-					return true
+				if l[0] == '\n' {
+					if shouldAddNewLine {
+						shouldAddNewLine = false
+					} else {
+						continue
+					}
 				}
-				return insideComment
-			})
+				if l == "bits 16\n" {
+					shouldAddNewLine = true
+				}
+				filtered = append(filtered, l)
+			}
+			want := strings.Join(filtered, "")
 			want = strings.TrimSpace(want)
 
-			t.Logf("\n%b\n", stream)
-
 			got, err := disassemble(stream)
-			require.NoError(t, err)
-			require.Equal(t, want, got)
+			assert.NoError(t, err)
+			assert.Equal(t, want, got)
 		})
 	}
 }
