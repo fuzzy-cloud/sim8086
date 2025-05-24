@@ -2,6 +2,7 @@ package cpu
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"strconv"
@@ -94,6 +95,21 @@ var EACTable = [...][2]register{
 	0b111: {BX},
 }
 
+// 0b111 — reg1 + reg2 + disp
+// 0b101 — reg1 + disp
+// 0b100 — reg1
+// 0b000 — DIRECT ACCESS
+var EACFormTable = [...][3]uint8{
+	0b000: {0b110, 0b111, 0b111},
+	0b001: {0b110, 0b111, 0b111},
+	0b010: {0b110, 0b111, 0b111},
+	0b011: {0b110, 0b111, 0b111},
+	0b100: {0b100, 0b101, 0b101},
+	0b101: {0b100, 0b101, 0b101},
+	0b110: {0b000, 0b101, 0b101},
+	0b111: {0b100, 0b101, 0b101},
+}
+
 func disassemble(stream []byte) (string, error) {
 	var (
 		out    strings.Builder
@@ -112,10 +128,19 @@ func disassemble(stream []byte) (string, error) {
 
 		fmt.Fprintf(&out, "\n")
 		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
-			if inst.src.imm > math.MaxInt8 {
-				fmt.Fprintf(&out, "%s %s, word %s", inst.opcode, inst.dst, inst.src)
+			if inst.opcode == MOV {
+				if inst.src.imm > math.MaxInt8 {
+					fmt.Fprintf(&out, "%s %s, word %s", inst.opcode, inst.dst, inst.src)
+				} else {
+					fmt.Fprintf(&out, "%s %s, byte %s", inst.opcode, inst.dst, inst.src)
+				}
 			} else {
-				fmt.Fprintf(&out, "%s %s, byte %s", inst.opcode, inst.dst, inst.src)
+				// FIXME
+				if inst.src.imm > math.MaxInt8 {
+					fmt.Fprintf(&out, "%s word %s, %s", inst.opcode, inst.dst, inst.src)
+				} else {
+					fmt.Fprintf(&out, "%s byte %s, %s", inst.opcode, inst.dst, inst.src)
+				}
 			}
 		} else {
 			fmt.Fprintf(&out, "%s %s, %s", inst.opcode, inst.dst, inst.src)
@@ -140,6 +165,7 @@ type operand struct {
 		reg1 register
 		reg2 register
 		disp int16
+		form uint8
 	}
 }
 
@@ -164,11 +190,12 @@ func operandImm(imm int16) (o operand) {
 	return
 }
 
-func operandEAC(disp int16, reg1, reg2 register) (o operand) {
+func operandEAC(form uint8, reg1, reg2 register, disp int16) (o operand) {
 	o.kind = opKindEAC
-	o.eac.disp = disp
+	o.eac.form = form
 	o.eac.reg1 = reg1
 	o.eac.reg2 = reg2
+	o.eac.disp = disp
 	return
 }
 
@@ -185,20 +212,30 @@ func (o operand) String() string {
 	case opKindImm:
 		return strconv.Itoa(int(o.imm))
 	case opKindEAC:
-		var out strings.Builder
-
-		fmt.Fprintf(&out, "[%s", o.eac.reg1)
-		if o.eac.reg2 != registerInvalid {
-			fmt.Fprintf(&out, " + %s", o.eac.reg2)
+		switch o.eac.form {
+		case 0b000:
+			panic("direct access")
+		case 0b100:
+			return fmt.Sprintf("[%s]", o.eac.reg1)
+		case 0b110:
+			return fmt.Sprintf("[%s + %s]", o.eac.reg1, o.eac.reg2)
+		case 0b101:
+			if o.eac.disp < 0 {
+				return fmt.Sprintf("[%s - %d]", o.eac.reg1, -o.eac.disp)
+			} else if o.eac.disp > 0 {
+				return fmt.Sprintf("[%s + %d]", o.eac.reg1, o.eac.disp)
+			}
+			return fmt.Sprintf("[%s]", o.eac.reg1)
+		case 0b111:
+			if o.eac.disp < 0 {
+				return fmt.Sprintf("[%s + %s - %d]", o.eac.reg1, o.eac.reg2, -o.eac.disp)
+			} else if o.eac.disp > 0 {
+				return fmt.Sprintf("[%s + %s + %d]", o.eac.reg1, o.eac.reg2, o.eac.disp)
+			}
+			return fmt.Sprintf("[%s + %s]", o.eac.reg1, o.eac.reg2)
+		default:
+			panic(fmt.Sprintf("invalid form of EAC: %d", o.eac.form))
 		}
-		if o.eac.disp > 0 {
-			fmt.Fprintf(&out, " + %d", o.eac.disp)
-		} else if o.eac.disp < 0 {
-			fmt.Fprintf(&out, " - %d", -o.eac.disp)
-		}
-		fmt.Fprintf(&out, "]")
-
-		return out.String()
 	case opKindDA:
 		return fmt.Sprintf("[%d]", o.da)
 	default:
@@ -351,7 +388,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		rm = int(b2 & 0b111)
 
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
-		if w == 0 {
+		if (w == 0 && s == 0) || (w == 1 && s == 1) {
 			readByteData = true
 		} else {
 			readWordData = true
@@ -362,7 +399,10 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		return
 	}
 
-	_ = s
+	if s == 1 && w == 0 {
+		err = errors.New("impossible combination s = 1 and w = 0")
+		return
+	}
 
 	switch mod {
 	case 0b00:
@@ -406,6 +446,11 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		n += 2
 	}
 
+	var eacForm uint8
+	if mod != 0b11 && rm != -1 {
+		eacForm = EACFormTable[rm][mod]
+	}
+
 	switch {
 	// regToReg
 	case isRegToReg:
@@ -426,13 +471,13 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	case isEAC && isSrcImmediate:
 		regs := EACTable[rm]
 
-		inst.dst = operandEAC(disp, regs[0], regs[1])
+		inst.dst = operandEAC(eacForm, regs[0], regs[1], disp)
 		inst.src = operandImm(data)
 	// memEACToReg or regToMemEAC
 	case isEAC:
 		regs := EACTable[rm]
 
-		operand1 := operandEAC(disp, regs[0], regs[1])
+		operand1 := operandEAC(eacForm, regs[0], regs[1], disp)
 		operand2 := operandReg(REGTable[reg][w])
 
 		if d == 0 {
