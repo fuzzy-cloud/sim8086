@@ -14,6 +14,8 @@ func TestDecode(t *testing.T) {
 		"0037_single_register_mov",
 		"0038_many_register_mov",
 		"0039_more_movs",
+		"0040_challenge_movs",
+		"0041_add_sub_cmp_jnz",
 	}
 
 	for _, name := range filenames {

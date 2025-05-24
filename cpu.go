@@ -3,6 +3,7 @@ package cpu
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -69,7 +70,7 @@ func (r register) String() string {
 	return registerToString[r]
 }
 
-var mapModeAndWidthToRegister = [...][2]register{
+var REGTable = [...][2]register{
 	0b000: {AL, AX},
 	0b001: {CL, CX},
 	0b010: {DL, DX},
@@ -80,7 +81,7 @@ var mapModeAndWidthToRegister = [...][2]register{
 	0b111: {BH, DI},
 }
 
-var mapRMToRegister = [...][2]register{
+var EACTable = [...][2]register{
 	0b000: {BX, SI},
 	0b001: {BX, DI},
 	0b010: {BP, SI},
@@ -108,7 +109,15 @@ func disassemble(stream []byte) (string, error) {
 		ip += n
 
 		fmt.Fprintf(&out, "\n")
-		fmt.Fprintf(&out, "%s %s, %s", inst.opcode, inst.dst, inst.src)
+		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
+			if inst.src.imm > math.MaxInt8 {
+				fmt.Fprintf(&out, "%s %s, word %s", inst.opcode, inst.dst, inst.src)
+			} else {
+				fmt.Fprintf(&out, "%s %s, byte %s", inst.opcode, inst.dst, inst.src)
+			}
+		} else {
+			fmt.Fprintf(&out, "%s %s, %s", inst.opcode, inst.dst, inst.src)
+		}
 	}
 
 	return out.String(), outErr
@@ -128,7 +137,7 @@ type operand struct {
 	eac  struct {
 		reg1 register
 		reg2 register
-		disp uint16
+		disp int16
 	}
 }
 
@@ -138,7 +147,7 @@ const (
 	opKindReg operandKind = iota + 1
 	opKindImm
 	opKindEAC
-	opKindDa
+	opKindDA
 )
 
 func operandReg(reg register) (o operand) {
@@ -153,11 +162,17 @@ func operandImm(imm int16) (o operand) {
 	return
 }
 
-func operandEAC(disp uint16, reg1, reg2 register) (o operand) {
+func operandEAC(disp int16, reg1, reg2 register) (o operand) {
 	o.kind = opKindEAC
 	o.eac.disp = disp
 	o.eac.reg1 = reg1
 	o.eac.reg2 = reg2
+	return
+}
+
+func operandDA(da uint16) (o operand) {
+	o.kind = opKindDA
+	o.da = da
 	return
 }
 
@@ -174,12 +189,16 @@ func (o operand) String() string {
 		if o.eac.reg2 != registerInvalid {
 			fmt.Fprintf(&out, " + %s", o.eac.reg2)
 		}
-		if o.eac.disp != 0 {
+		if o.eac.disp > 0 {
 			fmt.Fprintf(&out, " + %d", o.eac.disp)
+		} else if o.eac.disp < 0 {
+			fmt.Fprintf(&out, " - %d", -o.eac.disp)
 		}
 		fmt.Fprintf(&out, "]")
 
 		return out.String()
+	case opKindDA:
+		return fmt.Sprintf("[%d]", o.da)
 	default:
 		panic(fmt.Sprintf("unsupported operand kind: %d", o.kind))
 	}
@@ -195,9 +214,11 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 	var (
 		isRegToReg     bool
-		isImmToReg     bool
 		isDirectAccess bool
 		isEAC          bool
+		isSrcImmediate bool
+		isAddrToAcc    bool
+		isAccToAddr    bool
 	)
 
 	var (
@@ -239,15 +260,62 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		w = int(b1 >> 3 & 0b1)
 		reg = int(b1 & 0b111)
 
-		// NOTE: knowledge encoded into this specific instruction: we should read data
+		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
 		if w == 0 {
 			readByteData = true
 		} else {
 			readWordData = true
 		}
+		isSrcImmediate = true
+	case b1>>1 == 0b1100011:
+		inst.opcode = MOV
 
-		// NOTE: knowledge encoded into this specific instruction: the data is immediate value
-		isImmToReg = true
+		// b1
+		w = int(b1 & 0b1)
+
+		// b2
+		b2 := stream[n]
+		n++
+
+		// NOTE: knowledge encoded into this specific instruction:
+		// the dst should be register or memory and the src — immediate
+		mod = int(b2 >> 6)
+		reg = 0
+		rm = int(b2 & 0b111)
+
+		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
+		if w == 0 {
+			readByteData = true
+		} else {
+			readWordData = true
+		}
+		isSrcImmediate = true
+	case b1>>1 == 0b1010000:
+		inst.opcode = MOV
+
+		// b1
+		w = int(b1 & 0b1)
+
+		// NOTE: knowledge encoded into this specific instruction: we should read addr into src
+		if w == 0 {
+			readByteData = true
+		} else {
+			readWordData = true
+		}
+		isAddrToAcc = true
+	case b1>>1 == 0b1010001:
+		inst.opcode = MOV
+
+		// b1
+		w = int(b1 & 0b1)
+
+		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
+		if w == 0 {
+			readByteData = true
+		} else {
+			readWordData = true
+		}
+		isAccToAddr = true
 	default:
 		err = fmt.Errorf("unsupported instruction: %b", b1)
 		return
@@ -257,6 +325,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	case 0b00:
 		if rm == 0b110 {
 			isDirectAccess = true
+			readWordDisp = true
 		} else {
 			isEAC = true
 		}
@@ -270,13 +339,13 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		isRegToReg = true
 	}
 
-	var disp uint16
+	var disp int16
 	if readByteDisp {
-		disp = uint16(stream[n])
+		disp = int16(int8(stream[n]))
 		n++
 	}
 	if readWordDisp {
-		disp = binary.NativeEndian.Uint16(stream[n:])
+		disp = int16(binary.LittleEndian.Uint16(stream[n:]))
 		n += 2
 	}
 
@@ -286,19 +355,15 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		n++
 	}
 	if readWordData {
-		data = int16(binary.NativeEndian.Uint16(stream[n:]))
+		data = int16(binary.LittleEndian.Uint16(stream[n:]))
 		n += 2
 	}
 
-	var (
-		isDirectAccessToReg = isDirectAccess && d == 1
-		isRegToDirectAccess = isDirectAccess && d == 0
-	)
-
 	switch {
+	// regToReg
 	case isRegToReg:
-		operand1 := operandReg(mapModeAndWidthToRegister[rm][w])
-		operand2 := operandReg(mapModeAndWidthToRegister[reg][w])
+		operand1 := operandReg(REGTable[rm][w])
+		operand2 := operandReg(REGTable[reg][w])
 
 		if d == 0 {
 			inst.dst = operand1
@@ -307,14 +372,18 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.dst = operand2
 			inst.src = operand1
 		}
-	case isImmToReg:
-		inst.dst = operandReg(mapModeAndWidthToRegister[reg][w])
+	// immToMemEAC
+	case isEAC && isSrcImmediate:
+		regs := EACTable[rm]
+
+		inst.dst = operandEAC(disp, regs[0], regs[1])
 		inst.src = operandImm(data)
+	// memEACToReg or regToMemEAC
 	case isEAC:
-		regs := mapRMToRegister[rm]
+		regs := EACTable[rm]
 
 		operand1 := operandEAC(disp, regs[0], regs[1])
-		operand2 := operandReg(mapModeAndWidthToRegister[reg][w])
+		operand2 := operandReg(REGTable[reg][w])
 
 		if d == 0 {
 			inst.dst = operand1
@@ -323,10 +392,29 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.dst = operand2
 			inst.src = operand1
 		}
-	case isDirectAccessToReg:
-		panic("todo: DA to reg")
-	case isRegToDirectAccess:
-		panic("todo: reg to DA")
+	// memDAToReg or regToMemDA
+	case isDirectAccess:
+		operand1 := operandDA(uint16(disp))
+		operand2 := operandReg(REGTable[reg][w])
+
+		if d == 0 {
+			panic("todo: reg to DA")
+		} else {
+			inst.dst = operand2
+			inst.src = operand1
+		}
+	// immToReg
+	case isSrcImmediate:
+		inst.dst = operandReg(REGTable[reg][w])
+		inst.src = operandImm(data)
+	// accToAddr
+	case isAccToAddr:
+		inst.dst = operandDA(uint16(data))
+		inst.src = operandReg(AX)
+	// addrToAcc
+	case isAddrToAcc:
+		inst.dst = operandReg(AX)
+		inst.src = operandDA(uint16(data))
 	}
 
 	return
