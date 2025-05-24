@@ -160,12 +160,11 @@ type operand struct {
 	kind operandKind
 	reg  register
 	imm  int16
-	da   uint16
 	eac  struct {
-		reg1 register
-		reg2 register
-		disp int16
-		form uint8
+		form     uint8
+		reg1     register
+		reg2     register
+		dispOrDA int16
 	}
 }
 
@@ -175,7 +174,6 @@ const (
 	opKindReg operandKind = iota + 1
 	opKindImm
 	opKindEAC
-	opKindDA
 )
 
 func operandReg(reg register) (o operand) {
@@ -190,18 +188,17 @@ func operandImm(imm int16) (o operand) {
 	return
 }
 
-func operandEAC(form uint8, reg1, reg2 register, disp int16) (o operand) {
+func operandEAC(form uint8, disp int16, regs ...register) (o operand) {
 	o.kind = opKindEAC
 	o.eac.form = form
-	o.eac.reg1 = reg1
-	o.eac.reg2 = reg2
-	o.eac.disp = disp
-	return
-}
-
-func operandDA(da uint16) (o operand) {
-	o.kind = opKindDA
-	o.da = da
+	o.eac.dispOrDA = disp
+	if len(regs) > 1 {
+		o.eac.reg1 = regs[0]
+		o.eac.reg2 = regs[1]
+	}
+	if len(regs) > 0 {
+		o.eac.reg1 = regs[0]
+	}
 	return
 }
 
@@ -214,30 +211,28 @@ func (o operand) String() string {
 	case opKindEAC:
 		switch o.eac.form {
 		case 0b000:
-			panic("direct access")
+			return fmt.Sprintf("[%d]", o.eac.dispOrDA)
 		case 0b100:
 			return fmt.Sprintf("[%s]", o.eac.reg1)
 		case 0b110:
 			return fmt.Sprintf("[%s + %s]", o.eac.reg1, o.eac.reg2)
 		case 0b101:
-			if o.eac.disp < 0 {
-				return fmt.Sprintf("[%s - %d]", o.eac.reg1, -o.eac.disp)
-			} else if o.eac.disp > 0 {
-				return fmt.Sprintf("[%s + %d]", o.eac.reg1, o.eac.disp)
+			if o.eac.dispOrDA < 0 {
+				return fmt.Sprintf("[%s - %d]", o.eac.reg1, -o.eac.dispOrDA)
+			} else if o.eac.dispOrDA > 0 {
+				return fmt.Sprintf("[%s + %d]", o.eac.reg1, o.eac.dispOrDA)
 			}
 			return fmt.Sprintf("[%s]", o.eac.reg1)
 		case 0b111:
-			if o.eac.disp < 0 {
-				return fmt.Sprintf("[%s + %s - %d]", o.eac.reg1, o.eac.reg2, -o.eac.disp)
-			} else if o.eac.disp > 0 {
-				return fmt.Sprintf("[%s + %s + %d]", o.eac.reg1, o.eac.reg2, o.eac.disp)
+			if o.eac.dispOrDA < 0 {
+				return fmt.Sprintf("[%s + %s - %d]", o.eac.reg1, o.eac.reg2, -o.eac.dispOrDA)
+			} else if o.eac.dispOrDA > 0 {
+				return fmt.Sprintf("[%s + %s + %d]", o.eac.reg1, o.eac.reg2, o.eac.dispOrDA)
 			}
 			return fmt.Sprintf("[%s + %s]", o.eac.reg1, o.eac.reg2)
 		default:
 			panic(fmt.Sprintf("invalid form of EAC: %d", o.eac.form))
 		}
-	case opKindDA:
-		return fmt.Sprintf("[%d]", o.da)
 	default:
 		panic(fmt.Sprintf("unsupported operand kind: %d", o.kind))
 	}
@@ -253,7 +248,6 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 	var (
 		isRegToReg     bool
-		isDirectAccess bool
 		isEAC          bool
 		isSrcImmediate bool
 		isAddrToAcc    bool
@@ -406,11 +400,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 	switch mod {
 	case 0b00:
+		isEAC = true
 		if rm == 0b110 {
-			isDirectAccess = true
 			readWordDisp = true
-		} else {
-			isEAC = true
 		}
 	case 0b01:
 		isEAC = true
@@ -454,9 +446,6 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	switch {
 	// regToReg
 	case isRegToReg:
-		if reg == -1 {
-			fmt.Println("hello")
-		}
 		operand1 := operandReg(REGTable[rm][w])
 		operand2 := operandReg(REGTable[reg][w])
 
@@ -471,29 +460,18 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	case isEAC && isSrcImmediate:
 		regs := EACTable[rm]
 
-		inst.dst = operandEAC(eacForm, regs[0], regs[1], disp)
+		inst.dst = operandEAC(eacForm, disp, regs[0], regs[1])
 		inst.src = operandImm(data)
-	// memEACToReg or regToMemEAC
+	// memToReg or regToMem
 	case isEAC:
 		regs := EACTable[rm]
 
-		operand1 := operandEAC(eacForm, regs[0], regs[1], disp)
+		operand1 := operandEAC(eacForm, disp, regs[0], regs[1])
 		operand2 := operandReg(REGTable[reg][w])
 
 		if d == 0 {
 			inst.dst = operand1
 			inst.src = operand2
-		} else {
-			inst.dst = operand2
-			inst.src = operand1
-		}
-	// memDAToReg or regToMemDA
-	case isDirectAccess:
-		operand1 := operandDA(uint16(disp))
-		operand2 := operandReg(REGTable[reg][w])
-
-		if d == 0 {
-			panic("todo: reg to DA")
 		} else {
 			inst.dst = operand2
 			inst.src = operand1
@@ -509,12 +487,12 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		inst.src = operandImm(data)
 	// accToAddr
 	case isAccToAddr:
-		inst.dst = operandDA(uint16(data))
+		inst.dst = operandEAC(eacForm, data)
 		inst.src = operandReg(AX)
 	// addrToAcc
 	case isAddrToAcc:
 		inst.dst = operandReg(AX)
-		inst.src = operandDA(uint16(data))
+		inst.src = operandEAC(eacForm, data)
 	}
 
 	return
