@@ -13,11 +13,13 @@ type opcode byte
 const (
 	opcodeInvalid opcode = iota
 	MOV
+	ADD
 )
 
 var opcodeToString = [...]string{
 	opcodeInvalid: "INVALID",
 	MOV:           "mov",
+	ADD:           "add",
 }
 
 func (o opcode) String() string {
@@ -232,6 +234,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		reg = -1
 		// "Register/memory" bits. Used to indentify which register to use or used in EAC
 		rm = -1
+		// TODO: sign bit
+		s = -1
 	)
 
 	// NOTE: An instruction could from 1 to 6 byte in length
@@ -239,6 +243,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	n++
 
 	switch {
+	// MOVs
 	case b1>>2 == 0b100010:
 		inst.opcode = MOV
 
@@ -280,7 +285,6 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		// NOTE: knowledge encoded into this specific instruction:
 		// the dst should be register or memory and the src — immediate
 		mod = int(b2 >> 6)
-		reg = 0
 		rm = int(b2 & 0b111)
 
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
@@ -316,10 +320,49 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			readWordData = true
 		}
 		isAccToAddr = true
+
+	// ADDs
+	case b1>>2 == 0:
+		inst.opcode = ADD
+
+		// b1
+		d = int(b1 >> 1 & 1)
+		w = int(b1 & 1)
+
+		// b2
+		b2 := stream[n]
+		n++
+
+		mod = int(b2 >> 6)
+		reg = int(b2 >> 3 & 0b111)
+		rm = int(b2 & 0b111)
+	case b1>>2 == 0b100000:
+		inst.opcode = ADD
+
+		// b1
+		s = int(b1 >> 1 & 1)
+		w = int(b1 & 1)
+
+		// b2
+		b2 := stream[n]
+		n++
+
+		mod = int(b2 >> 6)
+		rm = int(b2 & 0b111)
+
+		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
+		if w == 0 {
+			readByteData = true
+		} else {
+			readWordData = true
+		}
+		isSrcImmediate = true
 	default:
 		err = fmt.Errorf("unsupported instruction: %b", b1)
 		return
 	}
+
+	_ = s
 
 	switch mod {
 	case 0b00:
@@ -336,7 +379,11 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		isEAC = true
 		readWordDisp = true
 	case 0b11:
-		isRegToReg = true
+		// NOTE: MOD can be use to identify a register of dst when src is immediate
+		// HACK: I'm not sure it will work for all cases
+		if !isSrcImmediate {
+			isRegToReg = true
+		}
 	}
 
 	var disp int16
@@ -362,6 +409,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	switch {
 	// regToReg
 	case isRegToReg:
+		if reg == -1 {
+			fmt.Println("hello")
+		}
 		operand1 := operandReg(REGTable[rm][w])
 		operand2 := operandReg(REGTable[reg][w])
 
@@ -405,7 +455,12 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		}
 	// immToReg
 	case isSrcImmediate:
-		inst.dst = operandReg(REGTable[reg][w])
+		// HACK: it is sooo gross
+		if reg == -1 && mod == 0b11 {
+			inst.dst = operandReg(REGTable[rm][w])
+		} else {
+			inst.dst = operandReg(REGTable[reg][w])
+		}
 		inst.src = operandImm(data)
 	// accToAddr
 	case isAccToAddr:
