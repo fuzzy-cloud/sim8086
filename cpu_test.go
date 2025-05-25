@@ -2,6 +2,8 @@ package cpu
 
 import (
 	"os"
+	"os/exec"
+	"path"
 	"strings"
 	"testing"
 
@@ -15,11 +17,13 @@ func TestDecode(t *testing.T) {
 		"0038_many_register_mov",
 		"0039_more_movs",
 		"0040_challenge_movs",
-		// "0041_add_sub_cmp_jnz",
+		"0041_add_sub_cmp_jnz",
 	}
 
 	for _, name := range filenames {
 		t.Run(name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+
 			stream, err := os.ReadFile("listings/" + name)
 			require.NoError(t, err)
 
@@ -48,8 +52,23 @@ func TestDecode(t *testing.T) {
 			want = strings.TrimSpace(want)
 
 			got, err := disassemble(stream)
-			assert.NoError(t, err)
-			assert.Equal(t, want, got)
+			require.NoError(t, err)
+
+			tmpFileAsmPath := path.Join(tmpDir, name+".asm")
+			err = os.WriteFile(tmpFileAsmPath, []byte(got), 0o666)
+			require.NoError(t, err)
+
+			cmd := exec.Command("nasm", tmpFileAsmPath)
+			err = cmd.Run()
+			require.NoError(t, err)
+
+			tmpFileBinPath := path.Join(tmpDir, name)
+			binary, err := os.ReadFile(tmpFileBinPath)
+
+			require.NoError(t, err)
+			if !assert.Equal(t, stream, binary) {
+				assert.Equal(t, want, got)
+			}
 		})
 	}
 }
