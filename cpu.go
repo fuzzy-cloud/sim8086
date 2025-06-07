@@ -16,6 +16,27 @@ const (
 	ADD
 	SUB
 	CMP
+	JNZ
+	JE
+	JL
+	JLE
+	JB
+	JBE
+	JP
+	JO
+	JS
+	JNE
+	JNL
+	JG
+	JNB
+	JA
+	JNP
+	JNO
+	JNS
+	LOOP
+	LOOPZ
+	LOOPNZ
+	JCXZ
 )
 
 var opcodeToString = [...]string{
@@ -24,6 +45,27 @@ var opcodeToString = [...]string{
 	ADD:           "add",
 	SUB:           "sub",
 	CMP:           "cmp",
+	JNZ:           "jnz",
+	JE:            "je",
+	JL:            "jl",
+	JLE:           "jle",
+	JB:            "jb",
+	JBE:           "jbe",
+	JP:            "jp",
+	JO:            "jo",
+	JS:            "js",
+	JNE:           "jne",
+	JNL:           "jnl",
+	JG:            "jg",
+	JNB:           "jnb",
+	JA:            "ja",
+	JNP:           "jnp",
+	JNO:           "jno",
+	JNS:           "jns",
+	LOOP:          "loop",
+	LOOPZ:         "loopz",
+	LOOPNZ:        "loopnz",
+	JCXZ:          "jcxz",
 }
 
 func (o opcode) String() string {
@@ -130,22 +172,55 @@ func disassemble(stream []byte) (string, error) {
 		ip += n
 
 		fmt.Fprintf(&out, "\n")
-		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
-			if inst.opcode == MOV {
+		switch inst.opcode {
+		case
+			JNZ,
+			JE,
+			JL,
+			JLE,
+			JB,
+			JBE,
+			JP,
+			JO,
+			JS,
+			JNE,
+			JNL,
+			JG,
+			JNB,
+			JA,
+			JNP,
+			JNO,
+			JNS,
+			LOOP,
+			LOOPZ,
+			LOOPNZ,
+			JCXZ:
+			if inst.jump+2 > 0 {
+				fmt.Fprintf(&out, "%s $+%d+0", inst.opcode, inst.jump+2)
+			} else if inst.jump+2 == 0 {
+				fmt.Fprintf(&out, "%s $+0", inst.opcode)
+			} else {
+				fmt.Fprintf(&out, "%s $%d+0", inst.opcode, inst.jump+2)
+			}
+		case MOV:
+			if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
 				if inst.src.imm.word {
 					fmt.Fprintf(&out, "%s %s, word %s", inst.opcode, inst.dst, inst.src)
-				} else {
-					fmt.Fprintf(&out, "%s %s, byte %s", inst.opcode, inst.dst, inst.src)
+					break
 				}
-			} else {
-				// FIXME
+				fmt.Fprintf(&out, "%s %s, byte %s", inst.opcode, inst.dst, inst.src)
+				break
+			}
+			fmt.Fprintf(&out, "%s %s, %s", inst.opcode, inst.dst, inst.src)
+		default:
+			if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
 				if inst.src.imm.word {
 					fmt.Fprintf(&out, "%s word %s, %s", inst.opcode, inst.dst, inst.src)
-				} else {
-					fmt.Fprintf(&out, "%s byte %s, %s", inst.opcode, inst.dst, inst.src)
+					break
 				}
+				fmt.Fprintf(&out, "%s byte %s, %s", inst.opcode, inst.dst, inst.src)
+				break
 			}
-		} else {
 			fmt.Fprintf(&out, "%s %s, %s", inst.opcode, inst.dst, inst.src)
 		}
 	}
@@ -155,6 +230,7 @@ func disassemble(stream []byte) (string, error) {
 
 type instruction struct {
 	opcode opcode
+	jump   int8
 	dst    operand
 	src    operand
 }
@@ -260,6 +336,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		isAddrToAcc    bool
 		isAccToAddr    bool
 		isImmToAcc     bool
+		isJump         bool
 	)
 
 	var (
@@ -512,7 +589,40 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			readWordData = true
 		}
 		isImmToAcc = true
+
+	// JMPs
 	default:
+		jumps := map[byte]opcode{
+			0b01110100: JE,
+			0b01111100: JL,
+			0b01111110: JLE,
+			0b01110010: JB,
+			0b01110110: JBE,
+			0b01111010: JP,
+			0b01110000: JO,
+			0b01111000: JS,
+			0b01110101: JNE,
+			0b01111101: JNL,
+			0b01111111: JG,
+			0b01110011: JNB,
+			0b01110111: JA,
+			0b01111011: JNP,
+			0b01110001: JNO,
+			0b01111001: JNS,
+			0b11100010: LOOP,
+			0b11100001: LOOPZ,
+			0b11100000: LOOPNZ,
+			0b11100011: JCXZ,
+		}
+
+		if opcode, ok := jumps[b1]; ok {
+			inst.opcode = opcode
+			// NOTE: knowledge encoded into this specific instruction
+			readByteData = true
+			isJump = true
+			break
+		}
+
 		err = fmt.Errorf("unsupported instruction: %b", b1)
 		return
 	}
@@ -625,6 +735,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.dst = operandReg(AL)
 			inst.src = operandImm(data, false)
 		}
+	case isJump:
+		inst.jump = int8(data)
 	}
 
 	return
