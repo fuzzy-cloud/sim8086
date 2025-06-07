@@ -24,7 +24,7 @@ func TestDecode(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			tmpDir := t.TempDir()
 
-			stream, err := os.ReadFile("listings/" + name)
+			stream, err := os.ReadFile("listings/" + name + ".bin")
 			require.NoError(t, err)
 
 			asmFile, err := os.ReadFile("listings/" + name + ".asm")

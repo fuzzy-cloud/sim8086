@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 )
@@ -129,14 +128,14 @@ func disassemble(stream []byte) (string, error) {
 		fmt.Fprintf(&out, "\n")
 		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
 			if inst.opcode == MOV {
-				if inst.src.imm > math.MaxInt8 {
+				if inst.src.imm.word {
 					fmt.Fprintf(&out, "%s %s, word %s", inst.opcode, inst.dst, inst.src)
 				} else {
 					fmt.Fprintf(&out, "%s %s, byte %s", inst.opcode, inst.dst, inst.src)
 				}
 			} else {
 				// FIXME
-				if inst.src.imm > math.MaxInt8 {
+				if inst.src.imm.word {
 					fmt.Fprintf(&out, "%s word %s, %s", inst.opcode, inst.dst, inst.src)
 				} else {
 					fmt.Fprintf(&out, "%s byte %s, %s", inst.opcode, inst.dst, inst.src)
@@ -159,8 +158,11 @@ type instruction struct {
 type operand struct {
 	kind operandKind
 	reg  register
-	imm  int16
-	eac  struct {
+	imm  struct {
+		val  int16
+		word bool
+	}
+	eac struct {
 		form     uint8
 		reg1     register
 		reg2     register
@@ -182,9 +184,10 @@ func operandReg(reg register) (o operand) {
 	return
 }
 
-func operandImm(imm int16) (o operand) {
+func operandImm(val int16, word bool) (o operand) {
 	o.kind = opKindImm
-	o.imm = imm
+	o.imm.val = val
+	o.imm.word = word
 	return
 }
 
@@ -207,7 +210,7 @@ func (o operand) String() string {
 	case opKindReg:
 		return registerToString[o.reg]
 	case opKindImm:
-		return strconv.Itoa(int(o.imm))
+		return strconv.Itoa(int(o.imm.val))
 	case opKindEAC:
 		switch o.eac.form {
 		case 0b000:
@@ -252,6 +255,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		isSrcImmediate bool
 		isAddrToAcc    bool
 		isAccToAddr    bool
+		isImmToAcc     bool
 	)
 
 	var (
@@ -279,8 +283,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		inst.opcode = MOV
 
 		// b1
-		d = int(b1 >> 1 & 0x1)
-		w = int(b1 & 0x1)
+		d = int(b1 >> 1 & 0b1)
+		w = int(b1 & 0b1)
 
 		// b2
 		b2 := stream[n]
@@ -357,8 +361,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		inst.opcode = ADD
 
 		// b1
-		d = int(b1 >> 1 & 1)
-		w = int(b1 & 1)
+		d = int(b1 >> 1 & 0b1)
+		w = int(b1 & 0b1)
 
 		// b2
 		b2 := stream[n]
@@ -371,8 +375,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		inst.opcode = ADD
 
 		// b1
-		s = int(b1 >> 1 & 1)
-		w = int(b1 & 1)
+		s = int(b1 >> 1 & 0b1)
+		w = int(b1 & 0b1)
 
 		// b2
 		b2 := stream[n]
@@ -382,12 +386,26 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		rm = int(b2 & 0b111)
 
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
+		// FIXME
 		if (w == 0 && s == 0) || (w == 1 && s == 1) {
 			readByteData = true
 		} else {
 			readWordData = true
 		}
 		isSrcImmediate = true
+	case b1>>1 == 0b10:
+		inst.opcode = ADD
+
+		// b1
+		w = int(b1 & 0b1)
+
+		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
+		if w == 0 {
+			readByteData = true
+		} else {
+			readWordData = true
+		}
+		isImmToAcc = true
 	default:
 		err = fmt.Errorf("unsupported instruction: %b", b1)
 		return
@@ -461,7 +479,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		regs := EACTable[rm]
 
 		inst.dst = operandEAC(eacForm, disp, regs[0], regs[1])
-		inst.src = operandImm(data)
+		inst.src = operandImm(data, w == 1)
 	// memToReg or regToMem
 	case isEAC:
 		regs := EACTable[rm]
@@ -484,7 +502,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		} else {
 			inst.dst = operandReg(REGTable[reg][w])
 		}
-		inst.src = operandImm(data)
+		inst.src = operandImm(data, w == 1)
 	// accToAddr
 	case isAccToAddr:
 		inst.dst = operandEAC(eacForm, data)
@@ -493,6 +511,14 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	case isAddrToAcc:
 		inst.dst = operandReg(AX)
 		inst.src = operandEAC(eacForm, data)
+	case isImmToAcc:
+		if w == 1 {
+			inst.dst = operandReg(AX)
+			inst.src = operandImm(data, true)
+		} else {
+			inst.dst = operandReg(AL)
+			inst.src = operandImm(data, false)
+		}
 	}
 
 	return

@@ -4,6 +4,6 @@ set -e
 
 for file in listings/*.asm; do
     base=$(basename "$file" .asm)
-    nasm "$file"
-    echo "Compiled $file -> listings/$base"
+    nasm "$file" -o "listings/$base.bin"
+    echo "Compiled $file -> listings/$base.bin"
 done
