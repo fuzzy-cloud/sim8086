@@ -14,12 +14,14 @@ const (
 	opcodeInvalid opcode = iota
 	MOV
 	ADD
+	SUB
 )
 
 var opcodeToString = [...]string{
 	opcodeInvalid: "INVALID",
 	MOV:           "mov",
 	ADD:           "add",
+	SUB:           "sub",
 }
 
 func (o opcode) String() string {
@@ -371,7 +373,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		mod = int(b2 >> 6)
 		reg = int(b2 >> 3 & 0b111)
 		rm = int(b2 & 0b111)
-	case b1>>2 == 0b100000:
+	case b1>>2 == 0b100000 && (stream[n]>>3&0b111) == 0b000:
 		inst.opcode = ADD
 
 		// b1
@@ -395,6 +397,57 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		isSrcImmediate = true
 	case b1>>1 == 0b10:
 		inst.opcode = ADD
+
+		// b1
+		w = int(b1 & 0b1)
+
+		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
+		if w == 0 {
+			readByteData = true
+		} else {
+			readWordData = true
+		}
+		isImmToAcc = true
+
+	// SUBs
+	case b1>>2 == 0b1010:
+		inst.opcode = SUB
+
+		// b1
+		d = int(b1 >> 1 & 0b1)
+		w = int(b1 & 0b1)
+
+		// b2
+		b2 := stream[n]
+		n++
+
+		mod = int(b2 >> 6)
+		reg = int(b2 >> 3 & 0b111)
+		rm = int(b2 & 0b111)
+	case b1>>2 == 0b100000 && (stream[n]>>3&0b111) == 0b101:
+		inst.opcode = SUB
+
+		// b1
+		s = int(b1 >> 1 & 0b1)
+		w = int(b1 & 0b1)
+
+		// b2
+		b2 := stream[n]
+		n++
+
+		mod = int(b2 >> 6)
+		rm = int(b2 & 0b111)
+
+		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
+		// FIXME
+		if (w == 0 && s == 0) || (w == 1 && s == 1) {
+			readByteData = true
+		} else {
+			readWordData = true
+		}
+		isSrcImmediate = true
+	case b1>>1 == 0b10110:
+		inst.opcode = SUB
 
 		// b1
 		w = int(b1 & 0b1)
