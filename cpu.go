@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-type opcode byte
+type mnemonic byte
 
 const (
-	opcodeInvalid opcode = iota
+	mnemonicInvalid mnemonic = iota
 	MOV
 	ADD
 	SUB
@@ -39,37 +39,37 @@ const (
 	JCXZ
 )
 
-var opcodeToString = [...]string{
-	opcodeInvalid: "INVALID",
-	MOV:           "mov",
-	ADD:           "add",
-	SUB:           "sub",
-	CMP:           "cmp",
-	JNZ:           "jnz",
-	JE:            "je",
-	JL:            "jl",
-	JLE:           "jle",
-	JB:            "jb",
-	JBE:           "jbe",
-	JP:            "jp",
-	JO:            "jo",
-	JS:            "js",
-	JNE:           "jne",
-	JNL:           "jnl",
-	JG:            "jg",
-	JNB:           "jnb",
-	JA:            "ja",
-	JNP:           "jnp",
-	JNO:           "jno",
-	JNS:           "jns",
-	LOOP:          "loop",
-	LOOPZ:         "loopz",
-	LOOPNZ:        "loopnz",
-	JCXZ:          "jcxz",
+var mnemonicToString = [...]string{
+	mnemonicInvalid: "INVALID",
+	MOV:             "mov",
+	ADD:             "add",
+	SUB:             "sub",
+	CMP:             "cmp",
+	JNZ:             "jnz",
+	JE:              "je",
+	JL:              "jl",
+	JLE:             "jle",
+	JB:              "jb",
+	JBE:             "jbe",
+	JP:              "jp",
+	JO:              "jo",
+	JS:              "js",
+	JNE:             "jne",
+	JNL:             "jnl",
+	JG:              "jg",
+	JNB:             "jnb",
+	JA:              "ja",
+	JNP:             "jnp",
+	JNO:             "jno",
+	JNS:             "jns",
+	LOOP:            "loop",
+	LOOPZ:           "loopz",
+	LOOPNZ:          "loopnz",
+	JCXZ:            "jcxz",
 }
 
-func (o opcode) String() string {
-	return opcodeToString[o]
+func (o mnemonic) String() string {
+	return mnemonicToString[o]
 }
 
 type register byte
@@ -172,7 +172,7 @@ func disassemble(stream []byte) (string, error) {
 		ip += n
 
 		fmt.Fprintf(&out, "\n")
-		switch inst.opcode {
+		switch inst.mnemonic {
 		case
 			JNZ,
 			JE,
@@ -196,32 +196,32 @@ func disassemble(stream []byte) (string, error) {
 			LOOPNZ,
 			JCXZ:
 			if inst.jump+2 > 0 {
-				fmt.Fprintf(&out, "%s $+%d+0", inst.opcode, inst.jump+2)
+				fmt.Fprintf(&out, "%s $+%d+0", inst.mnemonic, inst.jump+2)
 			} else if inst.jump+2 == 0 {
-				fmt.Fprintf(&out, "%s $+0", inst.opcode)
+				fmt.Fprintf(&out, "%s $+0", inst.mnemonic)
 			} else {
-				fmt.Fprintf(&out, "%s $%d+0", inst.opcode, inst.jump+2)
+				fmt.Fprintf(&out, "%s $%d+0", inst.mnemonic, inst.jump+2)
 			}
 		case MOV:
 			if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
 				if inst.src.imm.word {
-					fmt.Fprintf(&out, "%s %s, word %s", inst.opcode, inst.dst, inst.src)
+					fmt.Fprintf(&out, "%s %s, word %s", inst.mnemonic, inst.dst, inst.src)
 					break
 				}
-				fmt.Fprintf(&out, "%s %s, byte %s", inst.opcode, inst.dst, inst.src)
+				fmt.Fprintf(&out, "%s %s, byte %s", inst.mnemonic, inst.dst, inst.src)
 				break
 			}
-			fmt.Fprintf(&out, "%s %s, %s", inst.opcode, inst.dst, inst.src)
+			fmt.Fprintf(&out, "%s %s, %s", inst.mnemonic, inst.dst, inst.src)
 		default:
 			if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
 				if inst.src.imm.word {
-					fmt.Fprintf(&out, "%s word %s, %s", inst.opcode, inst.dst, inst.src)
+					fmt.Fprintf(&out, "%s word %s, %s", inst.mnemonic, inst.dst, inst.src)
 					break
 				}
-				fmt.Fprintf(&out, "%s byte %s, %s", inst.opcode, inst.dst, inst.src)
+				fmt.Fprintf(&out, "%s byte %s, %s", inst.mnemonic, inst.dst, inst.src)
 				break
 			}
-			fmt.Fprintf(&out, "%s %s, %s", inst.opcode, inst.dst, inst.src)
+			fmt.Fprintf(&out, "%s %s, %s", inst.mnemonic, inst.dst, inst.src)
 		}
 	}
 
@@ -229,10 +229,10 @@ func disassemble(stream []byte) (string, error) {
 }
 
 type instruction struct {
-	opcode opcode
-	jump   int8
-	dst    operand
-	src    operand
+	mnemonic mnemonic
+	jump     int8
+	dst      operand
+	src      operand
 }
 
 type operand struct {
@@ -361,7 +361,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	switch {
 	// MOVs
 	case b1>>2 == 0b100010:
-		inst.opcode = MOV
+		inst.mnemonic = MOV
 
 		// b1
 		d = int(b1 >> 1 & 0b1)
@@ -375,7 +375,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		reg = int(b2 >> 3 & 0b111)
 		rm = int(b2 & 0b111)
 	case b1>>4 == 0b1011:
-		inst.opcode = MOV
+		inst.mnemonic = MOV
 
 		// b1
 		w = int(b1 >> 3 & 0b1)
@@ -389,7 +389,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		}
 		isSrcImmediate = true
 	case b1>>1 == 0b1100011:
-		inst.opcode = MOV
+		inst.mnemonic = MOV
 
 		// b1
 		w = int(b1 & 0b1)
@@ -411,7 +411,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		}
 		isSrcImmediate = true
 	case b1>>1 == 0b1010000:
-		inst.opcode = MOV
+		inst.mnemonic = MOV
 
 		// b1
 		w = int(b1 & 0b1)
@@ -424,7 +424,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		}
 		isAddrToAcc = true
 	case b1>>1 == 0b1010001:
-		inst.opcode = MOV
+		inst.mnemonic = MOV
 
 		// b1
 		w = int(b1 & 0b1)
@@ -439,7 +439,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 	// ADDs
 	case b1>>2 == 0:
-		inst.opcode = ADD
+		inst.mnemonic = ADD
 
 		// b1
 		d = int(b1 >> 1 & 0b1)
@@ -453,7 +453,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		reg = int(b2 >> 3 & 0b111)
 		rm = int(b2 & 0b111)
 	case b1>>2 == 0b100000 && (stream[n]>>3&0b111) == 0b000:
-		inst.opcode = ADD
+		inst.mnemonic = ADD
 
 		// b1
 		s = int(b1 >> 1 & 0b1)
@@ -475,7 +475,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		}
 		isSrcImmediate = true
 	case b1>>1 == 0b10:
-		inst.opcode = ADD
+		inst.mnemonic = ADD
 
 		// b1
 		w = int(b1 & 0b1)
@@ -490,7 +490,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 	// SUBs
 	case b1>>2 == 0b1010:
-		inst.opcode = SUB
+		inst.mnemonic = SUB
 
 		// b1
 		d = int(b1 >> 1 & 0b1)
@@ -504,7 +504,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		reg = int(b2 >> 3 & 0b111)
 		rm = int(b2 & 0b111)
 	case b1>>2 == 0b100000 && (stream[n]>>3&0b111) == 0b101:
-		inst.opcode = SUB
+		inst.mnemonic = SUB
 
 		// b1
 		s = int(b1 >> 1 & 0b1)
@@ -526,7 +526,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		}
 		isSrcImmediate = true
 	case b1>>1 == 0b10110:
-		inst.opcode = SUB
+		inst.mnemonic = SUB
 
 		// b1
 		w = int(b1 & 0b1)
@@ -541,7 +541,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 	// CMPs
 	case b1>>2 == 0b1110:
-		inst.opcode = CMP
+		inst.mnemonic = CMP
 
 		// b1
 		d = int(b1 >> 1 & 0b1)
@@ -555,7 +555,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		reg = int(b2 >> 3 & 0b111)
 		rm = int(b2 & 0b111)
 	case b1>>2 == 0b100000 && (stream[n]>>3&0b111) == 0b111:
-		inst.opcode = CMP
+		inst.mnemonic = CMP
 
 		// b1
 		s = int(b1 >> 1 & 0b1)
@@ -577,7 +577,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		}
 		isSrcImmediate = true
 	case b1>>1 == 0b11110:
-		inst.opcode = CMP
+		inst.mnemonic = CMP
 
 		// b1
 		w = int(b1 & 0b1)
@@ -592,7 +592,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 	// JMPs
 	default:
-		jumps := map[byte]opcode{
+		jumps := map[byte]mnemonic{
 			0b01110100: JE,
 			0b01111100: JL,
 			0b01111110: JLE,
@@ -615,8 +615,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			0b11100011: JCXZ,
 		}
 
-		if opcode, ok := jumps[b1]; ok {
-			inst.opcode = opcode
+		if mnemonic, ok := jumps[b1]; ok {
+			inst.mnemonic = mnemonic
 			// NOTE: knowledge encoded into this specific instruction
 			readByteData = true
 			isJump = true
