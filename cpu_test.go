@@ -13,10 +13,10 @@ import (
 
 func TestDecode(t *testing.T) {
 	filenames := []string{
-		// "0037_single_register_mov",
-		// "0038_many_register_mov",
-		// "0039_more_movs",
-		// "0040_challenge_movs",
+		"0037_single_register_mov",
+		"0038_many_register_mov",
+		"0039_more_movs",
+		"0040_challenge_movs",
 		"0041_add_sub_cmp_jnz",
 	}
 
@@ -60,14 +60,16 @@ func TestDecode(t *testing.T) {
 
 			cmd := exec.Command("nasm", tmpFileAsmPath)
 			err = cmd.Run()
-			require.NoError(t, err)
+			if !assert.NoError(t, err) {
+				require.Equal(t, want, got)
+			}
 
 			tmpFileBinPath := path.Join(tmpDir, name)
 			binary, err := os.ReadFile(tmpFileBinPath)
 
 			require.NoError(t, err)
 			if !assert.Equal(t, stream, binary) {
-				assert.Equal(t, want, got)
+				require.Equal(t, want, got)
 			}
 		})
 	}
