@@ -190,35 +190,34 @@ func (p printer) print(format string, a ...any) {
 
 func (p printer) printInst(inst instruction, r Rule) {
 	p.print("\n")
+
 	switch {
 	case r.JMP:
-		if inst.jump+2 > 0 {
-			p.print("%s $+%d+0", inst.mnemonic, inst.jump+2)
-		} else if inst.jump+2 == 0 {
+		const jmpInstSize = 2
+		if inst.jump+jmpInstSize > 0 {
+			p.print("%s $+%d+0", inst.mnemonic, inst.jump+jmpInstSize)
+		} else if inst.jump+jmpInstSize == 0 {
 			p.print("%s $+0", inst.mnemonic)
 		} else {
-			p.print("%s $%d+0", inst.mnemonic, inst.jump+2)
+			p.print("%s $%d+0", inst.mnemonic, inst.jump+jmpInstSize)
 		}
-	case inst.mnemonic == MOV:
-		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
-			if inst.src.imm.word {
-				p.print("%s %s, word %s", inst.mnemonic, inst.dst, inst.src)
-				break
-			}
-			p.print("%s %s, byte %s", inst.mnemonic, inst.dst, inst.src)
-			break
-		}
-		p.print("%s %s, %s", inst.mnemonic, inst.dst, inst.src)
 	default:
 		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
-			if inst.src.imm.word {
-				p.print("%s word %s, %s", inst.mnemonic, inst.dst, inst.src)
-				break
+			if inst.src.imm.word && inst.mnemonic == MOV {
+				p.print("%s %s, word %s", inst.mnemonic, inst.dst, inst.src)
 			}
-			p.print("%s byte %s, %s", inst.mnemonic, inst.dst, inst.src)
-			break
+			if inst.src.imm.word && inst.mnemonic != MOV {
+				p.print("%s word %s, %s", inst.mnemonic, inst.dst, inst.src)
+			}
+			if !inst.src.imm.word && inst.mnemonic == MOV {
+				p.print("%s byte %s, %s", inst.mnemonic, inst.dst, inst.src)
+			}
+			if !inst.src.imm.word && inst.mnemonic != MOV {
+				p.print("%s %s, byte %s", inst.mnemonic, inst.dst, inst.src)
+			}
+		} else {
+			p.print("%s %s, %s", inst.mnemonic, inst.dst, inst.src)
 		}
-		p.print("%s %s, %s", inst.mnemonic, inst.dst, inst.src)
 	}
 }
 
