@@ -335,13 +335,8 @@ type Rule struct {
 
 func decode(stream []byte) (inst instruction, n int, err error) {
 	var (
-		readByteData bool
-		readWordData bool
-	)
-
-	var r Rule
-
-	var (
+		// How to decode instruction
+		r Rule
 		// "Direction" bit. Equals to 0 when src is specified in REG field (and 1 for dst)
 		d = -1
 		// "Size" bit. 0 — we're working with bytes. 1 — with words.
@@ -392,9 +387,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		reg = int(b1 & 0b111)
 
 		if w == 0 {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 	case b1>>1 == 0b1100011:
 		inst.mnemonic = MOV
@@ -416,9 +411,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
 		if w == 0 {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 	case b1>>1 == 0b1010000:
 		inst.mnemonic = MOV
@@ -432,9 +427,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into acc
 		if w == 0 {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 	case b1>>1 == 0b1010001:
 		inst.mnemonic = MOV
@@ -448,9 +443,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
 		if w == 0 {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 
 	// ADDs
@@ -485,9 +480,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
 		// FIXME
 		if (w == 0 && s == 0) || (w == 1 && s == 1) {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 		r.SRC = operandKindImm
 	case b1>>1 == 0b10:
@@ -498,9 +493,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
 		if w == 0 {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 		r.SRC = operandKindImm
 		r.DST = operandKindAcc
@@ -537,9 +532,11 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
 		// FIXME
 		if (w == 0 && s == 0) || (w == 1 && s == 1) {
-			readByteData = true
+
+			r.CheckData = 0x01
+
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 		r.SRC = operandKindImm
 	case b1>>1 == 0b10110:
@@ -550,9 +547,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
 		if w == 0 {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 
 		r.SRC = operandKindImm
@@ -590,9 +587,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
 		// FIXME
 		if (w == 0 && s == 0) || (w == 1 && s == 1) {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 		r.SRC = operandKindImm
 	case b1>>1 == 0b11110:
@@ -603,9 +600,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
 		if w == 0 {
-			readByteData = true
+			r.CheckData = 0x01
 		} else {
-			readWordData = true
+			r.CheckData = 0x10
 		}
 		r.SRC = operandKindImm
 		r.DST = operandKindAcc
@@ -638,7 +635,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		if mnemonic, ok := jumps[b1]; ok {
 			inst.mnemonic = mnemonic
 			// NOTE: knowledge encoded into this specific instruction
-			readByteData = true
+			r.CheckData = 0x01
 			r.JMP = true
 			break
 		}
@@ -713,11 +710,11 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	}
 
 	var data int16
-	if readByteData {
+	switch r.CheckData {
+	case 0x01:
 		data = int16(int8(stream[n]))
 		n++
-	}
-	if readWordData {
+	case 0x10:
 		data = int16(binary.LittleEndian.Uint16(stream[n:]))
 		n += 2
 	}
