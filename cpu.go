@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 )
@@ -13,6 +14,7 @@ type (
 	register byte
 )
 
+// TODO: generate from the table.sim8086
 const (
 	mnemonicInvalid Mnemonic = iota
 	MOV
@@ -62,6 +64,7 @@ const (
 	DI
 )
 
+// TODO: generate
 var mnemonicToString = [...]string{
 	mnemonicInvalid: "INVALID",
 	MOV:             "mov",
@@ -153,75 +156,70 @@ var EACFormTable = [...][3]uint8{
 
 func disassemble(stream []byte) (string, error) {
 	var (
-		out    strings.Builder
+		p      = printer{out: &strings.Builder{}}
 		outErr error
 	)
 
-	out.WriteString("bits 16\n")
+	p.print("bits 16\n")
 
 	for ip := 0; ip < len(stream); {
-		inst, n, err := decode(stream[ip:])
+		inst, r, n, err := decode(stream[ip:])
 		if err != nil {
 			outErr = err
 			break
 		}
 		ip += n
-
-		fmt.Fprintf(&out, "\n")
-		switch inst.mnemonic {
-		case
-			JNZ,
-			JE,
-			JL,
-			JLE,
-			JB,
-			JBE,
-			JP,
-			JO,
-			JS,
-			JNE,
-			JNL,
-			JG,
-			JNB,
-			JA,
-			JNP,
-			JNO,
-			JNS,
-			LOOP,
-			LOOPZ,
-			LOOPNZ,
-			JCXZ:
-			if inst.jump+2 > 0 {
-				fmt.Fprintf(&out, "%s $+%d+0", inst.mnemonic, inst.jump+2)
-			} else if inst.jump+2 == 0 {
-				fmt.Fprintf(&out, "%s $+0", inst.mnemonic)
-			} else {
-				fmt.Fprintf(&out, "%s $%d+0", inst.mnemonic, inst.jump+2)
-			}
-		case MOV:
-			if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
-				if inst.src.imm.word {
-					fmt.Fprintf(&out, "%s %s, word %s", inst.mnemonic, inst.dst, inst.src)
-					break
-				}
-				fmt.Fprintf(&out, "%s %s, byte %s", inst.mnemonic, inst.dst, inst.src)
-				break
-			}
-			fmt.Fprintf(&out, "%s %s, %s", inst.mnemonic, inst.dst, inst.src)
-		default:
-			if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
-				if inst.src.imm.word {
-					fmt.Fprintf(&out, "%s word %s, %s", inst.mnemonic, inst.dst, inst.src)
-					break
-				}
-				fmt.Fprintf(&out, "%s byte %s, %s", inst.mnemonic, inst.dst, inst.src)
-				break
-			}
-			fmt.Fprintf(&out, "%s %s, %s", inst.mnemonic, inst.dst, inst.src)
-		}
+		p.printInst(inst, r)
 	}
 
-	return out.String(), outErr
+	return p.out.String(), outErr
+}
+
+type printer struct {
+	out outWriter
+}
+
+type outWriter interface {
+	io.Writer
+	String() string
+}
+
+func (p printer) print(format string, a ...any) {
+	fmt.Fprintf(p.out, format, a...)
+}
+
+func (p printer) printInst(inst instruction, r Rule) {
+	p.print("\n")
+	switch {
+	case r.JMP:
+		if inst.jump+2 > 0 {
+			p.print("%s $+%d+0", inst.mnemonic, inst.jump+2)
+		} else if inst.jump+2 == 0 {
+			p.print("%s $+0", inst.mnemonic)
+		} else {
+			p.print("%s $%d+0", inst.mnemonic, inst.jump+2)
+		}
+	case inst.mnemonic == MOV:
+		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
+			if inst.src.imm.word {
+				p.print("%s %s, word %s", inst.mnemonic, inst.dst, inst.src)
+				break
+			}
+			p.print("%s %s, byte %s", inst.mnemonic, inst.dst, inst.src)
+			break
+		}
+		p.print("%s %s, %s", inst.mnemonic, inst.dst, inst.src)
+	default:
+		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
+			if inst.src.imm.word {
+				p.print("%s word %s, %s", inst.mnemonic, inst.dst, inst.src)
+				break
+			}
+			p.print("%s byte %s, %s", inst.mnemonic, inst.dst, inst.src)
+			break
+		}
+		p.print("%s %s, %s", inst.mnemonic, inst.dst, inst.src)
+	}
 }
 
 type instruction struct {
@@ -333,10 +331,8 @@ type Rule struct {
 	DST       int
 }
 
-func decode(stream []byte) (inst instruction, n int, err error) {
+func decode(stream []byte) (inst instruction, r Rule, n int, err error) {
 	var (
-		// How to decode instruction
-		r Rule
 		// "Direction" bit. Equals to 0 when src is specified in REG field (and 1 for dst)
 		d = -1
 		// "Size" bit. 0 — we're working with bytes. 1 — with words.
