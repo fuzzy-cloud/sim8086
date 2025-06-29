@@ -718,12 +718,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		inst.dst = operandEAC(eacForm, disp, regs[0], regs[1])
 		inst.src = operandImm(data, w == 1)
 	case (r.DST == operandKindEac && r.SRC == operandKindReg) || (r.DST == operandKindReg && r.SRC == operandKindEac):
-		regs := EACTable[rm]
-
-		if reg == -1 {
-			panic("here")
-		}
-		operand1 := operandEAC(eacForm, disp, regs[0], regs[1])
+		operand1 := operandEAC(eacForm, disp, EACTable[rm][0], EACTable[rm][1])
 		operand2 := operandReg(REGTable[reg][w])
 
 		if d == 0 {
@@ -734,7 +729,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.src = operand1
 		}
 	case r.DST == operandKindReg && r.SRC == operandKindImm:
-		// HACK: ???
+		// HACK: something wrong... but it works
 		if mod == 0b11 {
 			inst.dst = operandReg(REGTable[rm][w])
 		} else {
