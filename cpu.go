@@ -201,23 +201,21 @@ func (p printer) printInst(inst instruction, r Rule) {
 		} else {
 			p.print("%s $%d+0", inst.mnemonic, inst.jump+jmpInstSize)
 		}
-	default:
-		if inst.dst.kind == opKindEAC && inst.src.kind == opKindImm {
-			if inst.src.imm.word && inst.mnemonic == MOV {
-				p.print("%s %s, word %s", inst.mnemonic, inst.dst, inst.src)
-			}
-			if inst.src.imm.word && inst.mnemonic != MOV {
-				p.print("%s word %s, %s", inst.mnemonic, inst.dst, inst.src)
-			}
-			if !inst.src.imm.word && inst.mnemonic == MOV {
-				p.print("%s byte %s, %s", inst.mnemonic, inst.dst, inst.src)
-			}
-			if !inst.src.imm.word && inst.mnemonic != MOV {
-				p.print("%s %s, byte %s", inst.mnemonic, inst.dst, inst.src)
-			}
-		} else {
-			p.print("%s %s, %s", inst.mnemonic, inst.dst, inst.src)
+	case inst.dst.kind == opKindEAC && inst.src.kind == opKindImm :
+		if inst.src.imm.word && inst.mnemonic == MOV {
+			p.print("%s %s, word %s", inst.mnemonic, inst.dst, inst.src)
 		}
+		if inst.src.imm.word && inst.mnemonic != MOV {
+			p.print("%s word %s, %s", inst.mnemonic, inst.dst, inst.src)
+		}
+		if !inst.src.imm.word && inst.mnemonic == MOV {
+			p.print("%s byte %s, %s", inst.mnemonic, inst.dst, inst.src)
+		}
+		if !inst.src.imm.word && inst.mnemonic != MOV {
+			p.print("%s %s, byte %s", inst.mnemonic, inst.dst, inst.src)
+		}
+	default:
+		p.print("%s %s, %s", inst.mnemonic, inst.dst, inst.src)
 	}
 }
 
