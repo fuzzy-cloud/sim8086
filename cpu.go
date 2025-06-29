@@ -387,9 +387,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		reg = int(b1 & 0b111)
 
 		if w == 0 {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 	case b1>>1 == 0b1100011:
 		inst.mnemonic = MOV
@@ -411,9 +411,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
 		if w == 0 {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 	case b1>>1 == 0b1010000:
 		inst.mnemonic = MOV
@@ -427,9 +427,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into acc
 		if w == 0 {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 	case b1>>1 == 0b1010001:
 		inst.mnemonic = MOV
@@ -443,9 +443,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
 		if w == 0 {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 
 	// ADDs
@@ -480,9 +480,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
 		// FIXME
 		if (w == 0 && s == 0) || (w == 1 && s == 1) {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 		r.SRC = operandKindImm
 	case b1>>1 == 0b10:
@@ -493,9 +493,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
 		if w == 0 {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 		r.SRC = operandKindImm
 		r.DST = operandKindAcc
@@ -533,10 +533,10 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		// FIXME
 		if (w == 0 && s == 0) || (w == 1 && s == 1) {
 
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 		r.SRC = operandKindImm
 	case b1>>1 == 0b10110:
@@ -547,9 +547,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
 		if w == 0 {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 
 		r.SRC = operandKindImm
@@ -587,9 +587,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		// NOTE: knowledge encoded into this specific instruction: we should read data and put into src
 		// FIXME
 		if (w == 0 && s == 0) || (w == 1 && s == 1) {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 		r.SRC = operandKindImm
 	case b1>>1 == 0b11110:
@@ -600,9 +600,9 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: knowledge encoded into this specific instruction: we should read addr into dst
 		if w == 0 {
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 		} else {
-			r.CheckData = 0x10
+			r.CheckData = 0b10
 		}
 		r.SRC = operandKindImm
 		r.DST = operandKindAcc
@@ -635,7 +635,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		if mnemonic, ok := jumps[b1]; ok {
 			inst.mnemonic = mnemonic
 			// NOTE: knowledge encoded into this specific instruction
-			r.CheckData = 0x01
+			r.CheckData = 0b01
 			r.JMP = true
 			break
 		}
@@ -650,40 +650,16 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	}
 
 	switch mod {
-	case 0b00:
-		if rm == 0b110 {
-			r.CheckDisp = 0x10
+	case 0b00, 0b01, 0b10:
+		if mod == 0b00 && rm == 0b110 {
+			r.CheckDisp = 0b10
+		} else {
+			r.CheckDisp = uint8(mod)
 		}
 
 		switch d {
 		case -1:
-			r.DST = operandKindEac // ???
-		case 0:
-			r.DST = operandKindEac
-			r.SRC = operandKindReg
-		case 1:
-			r.DST = operandKindReg
-			r.SRC = operandKindEac
-		}
-	case 0b01:
-		r.CheckDisp = 0x01
-
-		switch d {
-		case -1:
-			r.DST = operandKindEac // ???
-		case 0:
-			r.DST = operandKindEac
-			r.SRC = operandKindReg
-		case 1:
-			r.DST = operandKindReg
-			r.SRC = operandKindEac
-		}
-	case 0b10:
-		r.CheckDisp = 0x10
-
-		switch d {
-		case -1:
-			r.DST = operandKindEac // ???
+			r.DST = operandKindEac // TODO: Is it true for all cases?
 		case 0:
 			r.DST = operandKindEac
 			r.SRC = operandKindReg
@@ -701,20 +677,20 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 	var disp int16
 	switch r.CheckDisp {
-	case 0x01:
+	case 0b01:
 		disp = int16(int8(stream[n]))
 		n++
-	case 0x10:
+	case 0b10:
 		disp = int16(binary.LittleEndian.Uint16(stream[n:]))
 		n += 2
 	}
 
 	var data int16
 	switch r.CheckData {
-	case 0x01:
+	case 0b01:
 		data = int16(int8(stream[n]))
 		n++
-	case 0x10:
+	case 0b10:
 		data = int16(binary.LittleEndian.Uint16(stream[n:]))
 		n += 2
 	}
