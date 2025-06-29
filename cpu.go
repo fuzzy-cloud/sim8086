@@ -325,22 +325,21 @@ const (
 	operandKindDA
 )
 
-type rule struct {
-	checkData bool
-	jmp       bool
-	src       int
-	dst       int
+type Rule struct {
+	CheckData uint8 // 0x00 — no, 0x01 — 8 bits, 0x10 — 16 bits
+	CheckDisp uint8 // 0x00 — no, 0x01 — 8 bits, 0x10 — 16 bits
+	JMP       bool
+	SRC       int
+	DST       int
 }
 
 func decode(stream []byte) (inst instruction, n int, err error) {
 	var (
-		readByteDisp bool
-		readWordDisp bool
 		readByteData bool
 		readWordData bool
 	)
 
-	var r rule
+	var r Rule
 
 	var (
 		// "Direction" bit. Equals to 0 when src is specified in REG field (and 1 for dst)
@@ -385,8 +384,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 
 		// NOTE: manual knowledge
 		// Immediate to register
-		r.dst = operandKindReg
-		r.src = operandKindImm
+		r.DST = operandKindReg
+		r.SRC = operandKindImm
 
 		// b1
 		w = int(b1 >> 3 & 0b1)
@@ -401,7 +400,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		inst.mnemonic = MOV
 
 		// Immediate to register/memory
-		r.src = operandKindImm
+		r.SRC = operandKindImm
 
 		// b1
 		w = int(b1 & 0b1)
@@ -425,8 +424,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		inst.mnemonic = MOV
 
 		// Memory to accumulator
-		r.dst = operandKindAcc
-		r.src = operandKindDA
+		r.DST = operandKindAcc
+		r.SRC = operandKindDA
 
 		// b1
 		w = int(b1 & 0b1)
@@ -441,8 +440,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		inst.mnemonic = MOV
 
 		// Accumulator to memory
-		r.dst = operandKindDA
-		r.src = operandKindAcc
+		r.DST = operandKindDA
+		r.SRC = operandKindAcc
 
 		// b1
 		w = int(b1 & 0b1)
@@ -490,7 +489,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		} else {
 			readWordData = true
 		}
-		r.src = operandKindImm
+		r.SRC = operandKindImm
 	case b1>>1 == 0b10:
 		inst.mnemonic = ADD
 
@@ -503,8 +502,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		} else {
 			readWordData = true
 		}
-		r.src = operandKindImm
-		r.dst = operandKindAcc
+		r.SRC = operandKindImm
+		r.DST = operandKindAcc
 
 	// SUBs
 	case b1>>2 == 0b1010:
@@ -542,7 +541,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		} else {
 			readWordData = true
 		}
-		r.src = operandKindImm
+		r.SRC = operandKindImm
 	case b1>>1 == 0b10110:
 		inst.mnemonic = SUB
 
@@ -556,8 +555,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			readWordData = true
 		}
 
-		r.src = operandKindImm
-		r.dst = operandKindAcc
+		r.SRC = operandKindImm
+		r.DST = operandKindAcc
 
 	// CMPs
 	case b1>>2 == 0b1110:
@@ -595,7 +594,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		} else {
 			readWordData = true
 		}
-		r.src = operandKindImm
+		r.SRC = operandKindImm
 	case b1>>1 == 0b11110:
 		inst.mnemonic = CMP
 
@@ -608,8 +607,8 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 		} else {
 			readWordData = true
 		}
-		r.src = operandKindImm
-		r.dst = operandKindAcc
+		r.SRC = operandKindImm
+		r.DST = operandKindAcc
 
 	// JMPs
 	default:
@@ -640,7 +639,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.mnemonic = mnemonic
 			// NOTE: knowledge encoded into this specific instruction
 			readByteData = true
-			r.jmp = true
+			r.JMP = true
 			break
 		}
 
@@ -656,59 +655,59 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	switch mod {
 	case 0b00:
 		if rm == 0b110 {
-			readWordDisp = true
+			r.CheckDisp = 0x10
 		}
 
 		switch d {
 		case -1:
-			r.dst = operandKindEac // ???
+			r.DST = operandKindEac // ???
 		case 0:
-			r.dst = operandKindEac
-			r.src = operandKindReg
+			r.DST = operandKindEac
+			r.SRC = operandKindReg
 		case 1:
-			r.dst = operandKindReg
-			r.src = operandKindEac
+			r.DST = operandKindReg
+			r.SRC = operandKindEac
 		}
 	case 0b01:
-		readByteDisp = true
+		r.CheckDisp = 0x01
 
 		switch d {
 		case -1:
-			r.dst = operandKindEac // ???
+			r.DST = operandKindEac // ???
 		case 0:
-			r.dst = operandKindEac
-			r.src = operandKindReg
+			r.DST = operandKindEac
+			r.SRC = operandKindReg
 		case 1:
-			r.dst = operandKindReg
-			r.src = operandKindEac
+			r.DST = operandKindReg
+			r.SRC = operandKindEac
 		}
 	case 0b10:
-		readWordDisp = true
+		r.CheckDisp = 0x10
 
 		switch d {
 		case -1:
-			r.dst = operandKindEac // ???
+			r.DST = operandKindEac // ???
 		case 0:
-			r.dst = operandKindEac
-			r.src = operandKindReg
+			r.DST = operandKindEac
+			r.SRC = operandKindReg
 		case 1:
-			r.dst = operandKindReg
-			r.src = operandKindEac
+			r.DST = operandKindReg
+			r.SRC = operandKindEac
 		}
 	case 0b11:
 		// NOTE: MOD can be use to identify a register of dst when src is immediate
-		r.dst = operandKindReg
-		if r.src != operandKindImm {
-			r.src = operandKindReg
+		r.DST = operandKindReg
+		if r.SRC != operandKindImm {
+			r.SRC = operandKindReg
 		}
 	}
 
 	var disp int16
-	if readByteDisp {
+	switch r.CheckDisp {
+	case 0x01:
 		disp = int16(int8(stream[n]))
 		n++
-	}
-	if readWordDisp {
+	case 0x10:
 		disp = int16(binary.LittleEndian.Uint16(stream[n:]))
 		n += 2
 	}
@@ -729,7 +728,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 	}
 
 	switch {
-	case r.dst == operandKindReg && r.src == operandKindReg:
+	case r.DST == operandKindReg && r.SRC == operandKindReg:
 		operand1 := operandReg(REGTable[rm][w])
 		operand2 := operandReg(REGTable[reg][w])
 
@@ -740,12 +739,12 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.dst = operand2
 			inst.src = operand1
 		}
-	case r.dst == operandKindEac && r.src == operandKindImm:
+	case r.DST == operandKindEac && r.SRC == operandKindImm:
 		regs := EACTable[rm]
 
 		inst.dst = operandEAC(eacForm, disp, regs[0], regs[1])
 		inst.src = operandImm(data, w == 1)
-	case (r.dst == operandKindEac && r.src == operandKindReg) || (r.dst == operandKindReg && r.src == operandKindEac):
+	case (r.DST == operandKindEac && r.SRC == operandKindReg) || (r.DST == operandKindReg && r.SRC == operandKindEac):
 		regs := EACTable[rm]
 
 		if reg == -1 {
@@ -761,7 +760,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.dst = operand2
 			inst.src = operand1
 		}
-	case r.dst == operandKindReg && r.src == operandKindImm:
+	case r.DST == operandKindReg && r.SRC == operandKindImm:
 		// HACK: ???
 		if mod == 0b11 {
 			inst.dst = operandReg(REGTable[rm][w])
@@ -769,13 +768,13 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.dst = operandReg(REGTable[reg][w])
 		}
 		inst.src = operandImm(data, w == 1)
-	case r.dst == operandKindDA && r.src == operandKindAcc:
+	case r.DST == operandKindDA && r.SRC == operandKindAcc:
 		inst.dst = operandEAC(eacForm, data)
 		inst.src = operandReg(AX)
-	case r.dst == operandKindAcc && r.src == operandKindDA:
+	case r.DST == operandKindAcc && r.SRC == operandKindDA:
 		inst.dst = operandReg(AX)
 		inst.src = operandEAC(eacForm, data)
-	case r.dst == operandKindAcc && r.src == operandKindImm:
+	case r.DST == operandKindAcc && r.SRC == operandKindImm:
 		if w == 1 {
 			inst.dst = operandReg(AX)
 			inst.src = operandImm(data, true)
@@ -783,7 +782,7 @@ func decode(stream []byte) (inst instruction, n int, err error) {
 			inst.dst = operandReg(AL)
 			inst.src = operandImm(data, false)
 		}
-	case r.jmp:
+	case r.JMP:
 		inst.jump = int8(data)
 	}
 
