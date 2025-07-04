@@ -9,6 +9,38 @@ import (
 	"strings"
 )
 
+type PartKind uint8
+
+const (
+	PartMnemonic PartKind = iota + 1
+	PartMOD
+	PartRM
+	PartREG
+	PartD
+	PartW
+	PartDISP_LO
+	PartDISP_HI
+	PartLiteral
+)
+
+type DecodingRule struct {
+	Mnemonic Mnemonic
+	Bytes    [6]ByteDecoding
+}
+
+type ByteDecoding struct {
+	NotEmpty bool
+	Parts    [3]Part
+}
+
+type Part struct {
+	NotEmpty bool
+	Kind     PartKind
+	Mask     int
+	Shift    int
+	Literal  int64 // Equals to -1 if not a literal
+}
+
 type (
 	Mnemonic byte
 	register byte
