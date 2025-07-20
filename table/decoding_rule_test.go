@@ -1,4 +1,4 @@
-package main
+package table
 
 import (
 	cpu "cpu8086"
@@ -122,7 +122,7 @@ func TestDecodingRule(t *testing.T) {
 		},
 	}
 
-	got, err := parseDecodingRule(input)
+	got, err := ParseDecodingRule(input)
 
 	require.NoError(t, err)
 	require.Equal(t, cpu.MOV, got.Mnemonic)

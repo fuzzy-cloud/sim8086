@@ -1,4 +1,4 @@
-package main
+package table
 
 import (
 	cpu "cpu8086"
@@ -12,7 +12,7 @@ var mapStrToMnemonic = map[string]cpu.Mnemonic{
 	"MOV": cpu.MOV,
 }
 
-func parseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
+func ParseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 	split := strings.Split(raw, " | ")
 	if len(split) < 2 {
 		err = fmt.Errorf("not enough bytes: %d", len(split))
