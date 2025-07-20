@@ -233,7 +233,7 @@ func (p printer) printInst(inst instruction, r Rule) {
 		} else {
 			p.print("%s $%d+0", inst.mnemonic, inst.jump+jmpInstSize)
 		}
-	case inst.dst.kind == opKindEAC && inst.src.kind == opKindImm :
+	case inst.dst.kind == opKindEAC && inst.src.kind == opKindImm:
 		if inst.src.imm.word && inst.mnemonic == MOV {
 			p.print("%s %s, word %s", inst.mnemonic, inst.dst, inst.src)
 		}
