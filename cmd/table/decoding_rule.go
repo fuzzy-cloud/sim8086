@@ -39,10 +39,12 @@ func parseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 			partIdx = 0
 		)
 
-		for _, rawPart := range rawParts {
+		// NOTE: partIdx is shared between b.Parts and rawParts which lead to confusing logic
+		for partIdx < len(rawParts) {
 			p := &b.Parts[partIdx]
 			p.Literal = -1
 
+			rawPart := rawParts[partIdx]
 			switch rawPart {
 			case "mod":
 				shift -= 2
@@ -79,8 +81,24 @@ func parseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 				p.Kind = cpu.PartDISP_HI
 				p.Mask = 0b11111111
 				p.Shift = shift
+			case "data":
+				shift -= 8
+				p.Kind = cpu.PartDATA
+				p.Mask = 0b11111111
+				p.Shift = shift
 
-				// TODO: check for (w = 1)
+				if partIdx+1 < len(rawParts) {
+					partIdx++
+					rawPart = rawParts[partIdx]
+
+					switch rawPart {
+					case "(w=1)":
+						b.Cond = cpu.Cond_W_Equals_1
+					default:
+						err = fmt.Errorf("unsupported condition for a byte: %s", rawPart)
+						return
+					}
+				}
 			default:
 				literal, parseErr := strconv.ParseInt(rawPart, 2, 16)
 				if parseErr != nil {

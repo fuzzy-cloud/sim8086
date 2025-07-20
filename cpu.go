@@ -20,7 +20,15 @@ const (
 	PartW
 	PartDISP_LO
 	PartDISP_HI
+	PartDATA
 	PartLiteral
+)
+
+type Cond uint8
+
+const (
+	Cond_Empty Cond = iota
+	Cond_W_Equals_1
 )
 
 type DecodingRule struct {
@@ -31,6 +39,7 @@ type DecodingRule struct {
 type ByteDecoding struct {
 	NotEmpty bool
 	Parts    [3]Part
+	Cond     Cond
 }
 
 type Part struct {

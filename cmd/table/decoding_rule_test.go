@@ -13,7 +13,7 @@ func TestDecodingRule(t *testing.T) {
 		want  cpu.DecodingRule
 	}{
 		{
-			input: "MOV | 100010 d w | mod reg rm | disp-lo | disp-hi",
+			input: "MOV | 100010 d w | mod reg rm | disp-lo | disp-hi | data | data (w=1)",
 			want: cpu.DecodingRule{
 				Mnemonic: cpu.MOV,
 				Bytes: [6]cpu.ByteDecoding{
@@ -97,8 +97,35 @@ func TestDecodingRule(t *testing.T) {
 							{}, // empty
 						},
 					},
-					{}, // empty
-					{}, // empty
+					{
+						NotEmpty: true,
+						Parts: [3]cpu.Part{
+							{
+								NotEmpty: true,
+								Kind:     cpu.PartDATA,
+								Mask:     0b1111_1111,
+								Shift:    0,
+								Literal:  -1,
+							},
+							{}, // empty
+							{}, // empty
+						},
+					},
+					{
+						NotEmpty: true,
+						Cond:     cpu.Cond_W_Equals_1,
+						Parts: [3]cpu.Part{
+							{
+								NotEmpty: true,
+								Kind:     cpu.PartDATA,
+								Mask:     0b1111_1111,
+								Shift:    0,
+								Literal:  -1,
+							},
+							{}, // empty
+							{}, // empty
+						},
+					},
 				},
 			},
 		},
