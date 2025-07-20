@@ -1,4 +1,4 @@
-package table
+package main
 
 import (
 	cpu "cpu8086"
