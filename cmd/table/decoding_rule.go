@@ -34,17 +34,22 @@ func ParseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 		}
 
 		var (
-			b       = &out.Bytes[byteIdx]
-			shift   = 8
-			partIdx = 0
+			b          = &out.Bytes[byteIdx]
+			shift      = 8
+			partIdx    = 0
+			rawPartIdx = 0
 		)
 
-		// NOTE: partIdx is shared between b.Parts and rawParts which lead to confusing logic
-		for partIdx < len(rawParts) {
+		for rawPartIdx < len(rawParts) {
 			p := &b.Parts[partIdx]
 			p.Literal = -1
 
-			rawPart := rawParts[partIdx]
+			rawPart := rawParts[rawPartIdx]
+			if rawPart == "" {
+				rawPartIdx++
+				continue
+			}
+
 			switch rawPart {
 			case "mod":
 				shift -= 2
@@ -89,6 +94,7 @@ func ParseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 
 				if partIdx+1 < len(rawParts) {
 					partIdx++
+					rawPartIdx++
 					rawPart = rawParts[partIdx]
 
 					switch rawPart {
@@ -102,7 +108,7 @@ func ParseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 			default:
 				literal, parseErr := strconv.ParseInt(rawPart, 2, 16)
 				if parseErr != nil {
-					err = fmt.Errorf("failed to parse a literal: %s", rawPart)
+					err = fmt.Errorf("failed to parse a literal: %q", rawPart)
 					return
 				}
 
@@ -122,6 +128,7 @@ func ParseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 			p.NotEmpty = true
 
 			partIdx++
+			rawPartIdx++
 		}
 	}
 
