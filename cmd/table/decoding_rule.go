@@ -76,9 +76,11 @@ func parseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 				p.Shift = shift
 			case "disp-hi":
 				shift -= 8
-				p.Kind = cpu.PartDISP_LO
+				p.Kind = cpu.PartDISP_HI
 				p.Mask = 0b11111111
 				p.Shift = shift
+
+				// TODO: check for (w = 1)
 			default:
 				literal, parseErr := strconv.ParseInt(rawPart, 2, 16)
 				if parseErr != nil {
@@ -88,7 +90,7 @@ func parseDecodingRule(raw string) (out cpu.DecodingRule, err error) {
 
 				shift -= len(rawPart)
 				p.Kind = cpu.PartLiteral
-				p.Mask = 2<<len(rawPart) - 1
+				p.Mask = 1<<len(rawPart) - 1
 				p.Shift = shift
 				p.Literal = literal
 			}
